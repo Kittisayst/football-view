@@ -28,6 +28,26 @@ function clampDate(d) {
   if (d > WC_END)   return WC_END;
   return d;
 }
+const STATUS_LAO = {
+  'FT':                  'ຈົບ',
+  'Full Time':           'ຈົບ',
+  'Final':               'ຈົບ',
+  'AET':                 'ຈົບ (ຕໍ່ເວລາ)',
+  'After Extra Time':    'ຈົບ (ຕໍ່ເວລາ)',
+  'Pen':                 'ຈົບ (ລູກໂທດ)',
+  'Penalties':           'ຈົບ (ລູກໂທດ)',
+  'Postponed':           'ເລື່ອນ',
+  'Canceled':            'ຍົກເລີກ',
+  'Suspended':           'ລໍຖ້າ',
+  'HT':                  'ພັກ',
+  'Half Time':           'ພັກ',
+};
+
+function laoStatus(raw) {
+  if (!raw) return 'ຈົບ';
+  return STATUS_LAO[raw] || STATUS_LAO[raw.trim()] || raw;
+}
+
 const LAO_DAYS   = ['ອາທິດ','ຈັນ','ອັງຄານ','ພຸດ','ພະຫັດ','ສຸກ','ເສົາ'];
 const LAO_MONTHS = ['','ມັງກອນ','ກຸມພາ','ມີນາ','ເມສາ','ພຶດສະພາ','ມິຖຸນາ','ກໍລະກົດ','ສິງຫາ','ກັນຍາ','ຕຸລາ','ພະຈິກ','ທັນວາ'];
 
@@ -41,7 +61,7 @@ function fmtDate(iso) {
   return `${day}, ${dd} ${mon}(${m}) ${y}`;
 }
 function fmtTime(iso) {
-  return new Date(iso).toLocaleTimeString('lo-LA', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString('lo-LA', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 function timeAgo(iso) {
   const diff = (Date.now() - new Date(iso)) / 1000;
@@ -96,8 +116,8 @@ function getStatusInfo(comp) {
     else                                 txt = s.shortDetail || 'LIVE';
     return { cls: 'status-live', text: txt, state: 'live', period: per, rawClock: min };
   }
-  if (s.state === 'post') return { cls: 'status-final', text: s.shortDetail || 'FT', state: 'post' };
-  return { cls: 'status-upcoming', text: fmtTime(comp.startDate || ''), state: 'pre' };
+  if (s.state === 'post') return { cls: 'status-final', text: laoStatus(s.shortDetail), state: 'post' };
+  return { cls: 'status-upcoming', text: 'ກຳລັງຈະ', state: 'pre' };
 }
 
 function teamBlock(t, isWinner) {
@@ -227,19 +247,14 @@ async function loadDay(date) {
   const el = document.getElementById('body-today');
   el.innerHTML = spinnerHTML();
   try {
-    // Always fetch yesterday + today so live matches that started the day before
-    // (timezone difference) are not missed
-    const prev = prevDateStr(date);
-    const [dataToday, dataPrev] = await Promise.all([
-      fetchJSON(`${API.espn}/scoreboard?dates=${toYMD(date)}&limit=100`),
-      fetchJSON(`${API.espn}/scoreboard?dates=${toYMD(prev)}&limit=100`).catch(() => ({ events: [] })),
-    ]);
-
-    // From yesterday: only keep matches that are still live
-    const liveFromPrev = (dataPrev.events || []).filter(
-      e => e.competitions[0].status.type.state === 'in'
+    // Fetch prev + selected day because UTC→local timezone can shift match dates
+    const prev = shiftDate(date, -1);
+    const data = await fetchJSON(
+      `${API.espn}/scoreboard?dates=${toYMD(prev)}-${toYMD(date)}&limit=200`
     );
-    const evs = [...liveFromPrev, ...(dataToday.events || [])];
+
+    // Filter by UTC date (same logic as groupByDate) so results match schedule tab
+    const evs = (data.events || []).filter(e => e.date.split('T')[0] === date);
 
     document.getElementById('todayCount').textContent = evs.length ? `${evs.length} ການແຂ່ງຂັນ` : '';
     el.innerHTML = renderEventList(evs);
@@ -248,9 +263,9 @@ async function loadDay(date) {
   }
 }
 
-function prevDateStr(dateStr) {
+function shiftDate(dateStr, days) {
   const d = new Date(dateStr);
-  d.setDate(d.getDate() - 1);
+  d.setDate(d.getDate() + days);
   return d.toISOString().split('T')[0];
 }
 
@@ -717,12 +732,16 @@ function buildMatchInfoRow(data) {
 async function refreshStats() {
   try {
     const today = clampDate(todayStr());
-    const data  = await fetchJSON(`${API.espn}/scoreboard?dates=${toYMD(today)}&limit=100`);
-    const evs   = data.events || [];
+    const prev  = shiftDate(today, -1);
+    const data  = await fetchJSON(`${API.espn}/scoreboard?dates=${toYMD(prev)}-${toYMD(today)}&limit=200`);
+    const evs   = (data.events || []).filter(e => e.date.split('T')[0] === today);
+    const live  = evs.filter(e => e.competitions[0].status.type.state === 'in').length;
+    const done  = evs.filter(e => e.competitions[0].status.type.state === 'post').length;
+    const upcoming = evs.filter(e => e.competitions[0].status.type.state === 'pre').length;
     document.getElementById('s-total').textContent    = evs.length;
-    document.getElementById('s-live').textContent     = evs.filter(e => e.competitions[0].status.type.state === 'in').length;
-    document.getElementById('s-done').textContent     = evs.filter(e => e.competitions[0].status.type.state === 'post').length;
-    document.getElementById('s-upcoming').textContent = evs.filter(e => e.competitions[0].status.type.state === 'pre').length;
+    document.getElementById('s-live').textContent     = live;
+    document.getElementById('s-done').textContent     = done;
+    document.getElementById('s-upcoming').textContent = upcoming;
   } catch (_) {}
 }
 
