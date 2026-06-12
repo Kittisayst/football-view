@@ -221,7 +221,7 @@ function renderCard(ev, odds = null) {
 
 function groupByDate(events) {
   return events.reduce((acc, ev) => {
-    const d = ev.date.split('T')[0];
+    const d = localDateStr(ev.date);
     (acc[d] = acc[d] || []).push(ev);
     return acc;
   }, {});
@@ -253,14 +253,19 @@ async function loadDay(date) {
       `${API.espn}/scoreboard?dates=${toYMD(prev)}-${toYMD(date)}&limit=200`
     );
 
-    // Filter by UTC date (same logic as groupByDate) so results match schedule tab
-    const evs = (data.events || []).filter(e => e.date.split('T')[0] === date);
+    // Filter by LOCAL date to match what the user actually experiences
+    const evs = (data.events || []).filter(e => localDateStr(e.date) === date);
 
     document.getElementById('todayCount').textContent = evs.length ? `${evs.length} ການແຂ່ງຂັນ` : '';
     el.innerHTML = renderEventList(evs);
   } catch (e) {
     el.innerHTML = errorHTML('ດຶງຂໍ້ມູນບໍ່ໄດ້: ' + e.message);
   }
+}
+
+// Local date as 'YYYY-MM-DD' (sv locale = ISO format)
+function localDateStr(iso) {
+  return new Date(iso).toLocaleDateString('sv');
 }
 
 function shiftDate(dateStr, days) {
@@ -502,11 +507,17 @@ function updateModalTabBtns(active) {
 }
 
 function buildModalTabContent(data, tab) {
+  const comp    = data.header?.competitions?.[0];
+  const homeCmp = comp?.competitors?.find(c => c.homeAway === 'home') || comp?.competitors?.[0] || {};
+  const awayCmp = comp?.competitors?.find(c => c.homeAway === 'away') || comp?.competitors?.[1] || {};
+  const homeId  = String(homeCmp.team?.id || homeCmp.id || '');
+  const awayId  = String(awayCmp.team?.id || awayCmp.id || '');
+
   const infoRow  = buildMatchInfoRow(data);
   const oddsHtml = buildOddsHTML(data.odds);
   let   body     = '';
 
-  if (tab === 'timeline') body = buildTimeline(data.keyEvents || []);
+  if (tab === 'timeline') body = buildTimeline(data.keyEvents || [], homeId, awayId);
   if (tab === 'stats')    body = buildStats(data.boxscore?.teams || []);
   if (tab === 'lineup')   body = buildLineup(data.rosters || []);
 
@@ -522,15 +533,17 @@ function buildPreMatchBody(data) {
 
 // ── Timeline ────────────────────────────────────────
 const TL_ICONS = {
-  goal:         '⚽',
-  'yellow card':'🟨',
-  'red card':   '🟥',
-  substitution: '🔄',
-  halftime:     '⏸',
-  kickoff:      '▶️',
-  'end regular':'🏁',
-  penalty:      '🎯',
-  var:          '📺',
+  goal:          '⚽',
+  'own goal':    '🔴',
+  'yellow card': '🟨',
+  'red card':    '🟥',
+  substitution:  '🔄',
+  halftime:      '⏸',
+  kickoff:       '▶️',
+  'end regular': '🏁',
+  'end period':  '🏁',
+  penalty:       '🎯',
+  var:           '📺',
 };
 
 function tlIcon(type) {
@@ -541,8 +554,7 @@ function tlIcon(type) {
   return null;
 }
 
-function buildTimeline(keyEvents) {
-  // Filter to meaningful events only
+function buildTimeline(keyEvents, homeId, awayId) {
   const skip = ['start delay', 'end delay', 'start 2nd half', 'start 3rd'];
   const evs  = keyEvents.filter(e => {
     const t = (e.type?.text || '').toLowerCase();
@@ -552,122 +564,240 @@ function buildTimeline(keyEvents) {
   if (!evs.length) return emptyHTML('ຍັງບໍ່ມີເຫດການ');
 
   const rows = evs.map(e => {
-    const type  = e.type?.text || '';
-    const icon  = tlIcon(type);
-    if (!icon) return '';    // skip unknown minor events
-    const clock = e.clock?.displayValue ? e.clock.displayValue + '\'' : '';
-    const text  = e.text || type;
-    const team  = e.team?.displayName || '';
-    const t     = type.toLowerCase();
-    const cls   = t.includes('goal') ? 'tl-goal' : (t.includes('kickoff') || t.includes('halftime') || t.includes('end regular') ? 'tl-section' : '');
-    return `<div class="tl-item ${cls}">
-      <div class="tl-icon">${icon}</div>
-      <div class="tl-clock">${clock}</div>
-      <div class="tl-body">
-        <div class="tl-text">${text}</div>
-        ${team ? `<div class="tl-team">${team}</div>` : ''}
-      </div>
+    const type = e.type?.text || '';
+    const icon = tlIcon(type);
+    if (!icon) return '';
+
+    const clock     = e.clock?.displayValue ? e.clock.displayValue + '\'' : '';
+    const text      = e.text || type;
+    const t         = type.toLowerCase();
+    const isSection = ['kickoff', 'halftime', 'end regular', 'end period', 'final'].some(x => t.includes(x));
+
+    if (isSection) {
+      const label = t.includes('halftime') ? 'ພັກ' : t.includes('kickoff') ? 'ເລີ່ມ' : 'ຈົບ';
+      return `<div class="tl-section-divider">
+        <div class="tl-divider-line"></div>
+        <div class="tl-divider-chip">${icon} ${label} ${clock}</div>
+        <div class="tl-divider-line"></div>
+      </div>`;
+    }
+
+    const isGoal = t.includes('goal') || (t.includes('penalty') && !t.includes('miss'));
+    const teamId = e.team?.id ? String(e.team.id) : '';
+    const side   = teamId === homeId ? 'home' : teamId === awayId ? 'away' : 'home';
+
+    const pill = `<div class="tl-event-pill${isGoal ? ' tl-goal-pill' : ''}">
+      <span class="tl-pill-icon">${icon}</span>
+      <span class="tl-pill-text">${text}</span>
+    </div>`;
+
+    return `<div class="tl-split-row">
+      <div class="tl-col-home">${side === 'home' ? pill : ''}</div>
+      <div class="tl-col-time">${clock}</div>
+      <div class="tl-col-away">${side === 'away' ? pill : ''}</div>
     </div>`;
   }).filter(Boolean).join('');
 
-  return rows ? `<div class="timeline">${rows}</div>` : emptyHTML('ຍັງບໍ່ມີເຫດການ');
+  return rows ? `<div class="timeline-container">${rows}</div>` : emptyHTML('ຍັງບໍ່ມີເຫດການ');
 }
 
 // ── Stats ────────────────────────────────────────────
+// Predefined priority stats (key, English label, format fn)
 const STATS_DEF = [
-  ['possessionPct',  'ຄອງລູກ',   v => v.toFixed(1) + '%',       true ],
-  ['totalShots',     'ຍິງທັງໝົດ', v => v,                        false],
-  ['shotsOnTarget',  'ຍິງໃສ່ເປົ້າ',v => v,                       false],
-  ['wonCorners',     'ເຕະມຸມ',    v => v,                        false],
-  ['foulsCommitted', 'ຟາວ',       v => v,                        false],
-  ['yellowCards',    'ໃບເຫຼືອງ',  v => v,                        false],
-  ['redCards',       'ໃບແດງ',     v => v,                        false],
-  ['saves',          'ຊ່ວຍ GK',   v => v,                        false],
-  ['passPct',        'ສົ່ງ%',      v => Math.round(v * 100) + '%', true ],
-  ['totalClearance', 'ຄລຽ',       v => v,                        false],
+  ['totalShots',     'Shots',          v => Math.round(v)],
+  ['shotsOnTarget',  'Shots on target',v => Math.round(v)],
+  ['possessionPct',  'Possession',     v => Math.round(v) + '%'],
+  ['totalPasses',    'Passes',         v => Math.round(v)],
+  ['passPct',        'Pass accuracy',  v => { const n = parseFloat(v)||0; return (n<=1?Math.round(n*100):Math.round(n))+'%'; }],
+  ['foulsCommitted', 'Fouls',          v => Math.round(v)],
+  ['yellowCards',    'Yellow cards',   v => Math.round(v)],
+  ['redCards',       'Red cards',      v => Math.round(v)],
+  ['offsides',       'Offsides',       v => Math.round(v)],
+  ['wonCorners',     'Corners',        v => Math.round(v)],
 ];
 
 function buildStats(teams) {
   if (!teams || teams.length < 2) return emptyHTML('ຍັງບໍ່ມີ Stats');
 
-  const home = Object.fromEntries((teams[0].statistics || []).map(s => [s.name, s.value]));
-  const away = Object.fromEntries((teams[1].statistics || []).map(s => [s.name, s.value]));
-  const homeName = teams[0].team?.abbreviation || 'Home';
-  const awayName = teams[1].team?.abbreviation || 'Away';
+  const hStats = teams[0].statistics || [];
+  const aStats = teams[1].statistics || [];
+  if (!hStats.length && !aStats.length) return emptyHTML('ຍັງບໍ່ມີ Stats');
 
-  // Team colour legend
-  const legend = `<div class="d-flex justify-content-between mb-3" style="font-size:.75rem;font-weight:600">
-    <span style="color:var(--gold)">■ ${homeName}</span>
-    <span style="color:var(--blue)">■ ${awayName}</span>
+  // ESPN returns objects with {name, value, displayValue, label}
+  const hMap  = Object.fromEntries(hStats.map(s => [s.name, s]));
+  const aMap  = Object.fromEntries(aStats.map(s => [s.name, s]));
+  const hLogo = teams[0].team?.logo || '';
+  const aLogo = teams[1].team?.logo || '';
+  const hName = teams[0].team?.abbreviation || 'Home';
+  const aName = teams[1].team?.abbreviation || 'Away';
+
+  const hdr = `<div class="stats-team-hdr">
+    <div class="stats-th-side">
+      ${hLogo ? `<img src="${hLogo}" alt="">` : ''}
+      <span>${hName}</span>
+    </div>
+    <div class="stats-th-title">TEAM STATS</div>
+    <div class="stats-th-side stats-th-right">
+      <span>${aName}</span>
+      ${aLogo ? `<img src="${aLogo}" alt="">` : ''}
+    </div>
   </div>`;
 
-  const rows = STATS_DEF.map(([key, label, fmt, isPct]) => {
-    const hv = home[key] ?? null;
-    const av = away[key] ?? null;
-    if (hv === null && av === null) return '';
+  // Get numeric value from ESPN stat entry (value → displayValue fallback)
+  const getNum = entry => {
+    if (!entry) return null;
+    const v = entry.value ?? entry.displayValue;
+    if (v == null) return null;
+    return parseFloat(String(v).replace('%','')) || 0;
+  };
+  const getDisplay = (entry, fmtFn) => {
+    if (!entry) return '—';
+    const v = entry.value ?? entry.displayValue;
+    if (v == null) return '—';
+    try { return fmtFn ? String(fmtFn(parseFloat(String(v).replace('%',''))||0)) : String(v); }
+    catch { return String(v); }
+  };
 
-    const h = parseFloat(hv) || 0;
-    const a = parseFloat(av) || 0;
-
-    let hPct, aPct;
-    if (isPct && key === 'possessionPct') {
-      hPct = h; aPct = a;
-    } else {
-      const total = h + a || 1;
-      hPct = (h / total) * 100;
-      aPct = (a / total) * 100;
-    }
-
-    return `<div class="stat-item">
-      <div class="stat-vals">
-        <div class="stat-home-v">${fmt(h)}</div>
-        <div class="stat-lbl">${label}</div>
-        <div class="stat-away-v">${fmt(a)}</div>
-      </div>
-      <div class="stat-bar-shared">
-        <div class="stat-bar-h" style="width:${hPct}%"></div>
-        <div class="stat-bar-a" style="width:${aPct}%"></div>
-      </div>
+  const makeBarRow = (label, hDisp, aDisp, h, a, isPoss) => {
+    if (h === null && a === null) return '';
+    const hv = h ?? 0, av = a ?? 0;
+    let hPct = 50, aPct = 50;
+    if (isPoss) { hPct = hv; aPct = av; }
+    else { const tot = hv + av || 1; hPct = (hv/tot)*100; aPct = (av/tot)*100; }
+    return `<div class="stat-row">
+      <div class="stat-val-h${hv > av ? ' stat-win' : ''}">${hDisp}</div>
+      <div class="stat-label">${label}</div>
+      <div class="stat-val-a${av > hv ? ' stat-win' : ''}">${aDisp}</div>
+    </div>
+    <div class="stat-bar-shared">
+      <div class="stat-bar-h" style="width:${hPct}%"></div>
+      <div class="stat-bar-a" style="width:${aPct}%"></div>
     </div>`;
-  }).filter(Boolean).join('');
+  };
 
-  return `<div class="stats-grid">${legend}${rows}</div>`;
+  // 1) Try predefined keys
+  let rows = STATS_DEF.map(([key, label, fmt]) => {
+    const he = hMap[key], ae = aMap[key];
+    const h  = getNum(he), a = getNum(ae);
+    if (h === null && a === null) return '';
+    const isPoss = key === 'possessionPct';
+    return makeBarRow(label, getDisplay(he, fmt), getDisplay(ae, fmt), h, a, isPoss);
+  }).filter(Boolean);
+
+  // 2) If fewer than 3 matched, auto-detect ALL stats ESPN returned
+  if (rows.length < 3) {
+    const allNames = [...new Set([...hStats.map(s => s.name), ...aStats.map(s => s.name)])];
+    rows = allNames.map(name => {
+      const he    = hMap[name] || null;
+      const ae    = aMap[name] || null;
+      const ref   = he || ae;
+      const label = ref?.label || ref?.shortDisplayName || name.replace(/([A-Z])/g, ' $1').trim();
+      const h     = getNum(he);
+      const a     = getNum(ae);
+      const hDisp = he ? (he.displayValue ?? String(he.value ?? '—')) : '—';
+      const aDisp = ae ? (ae.displayValue ?? String(ae.value ?? '—')) : '—';
+      const isPoss = /pct|percent|possession/i.test(name);
+      return makeBarRow(label, hDisp, aDisp, h, a, isPoss);
+    }).filter(Boolean);
+  }
+
+  const body = rows.join('') || '<p style="text-align:center;color:var(--text-muted);padding:20px">ຍັງບໍ່ມີ Stats</p>';
+  return `<div class="stats-wrap">${hdr}<div class="stats-rows">${body}</div></div>`;
 }
 
 // ── Lineup ───────────────────────────────────────────
+function shortName(n) {
+  const parts = (n || '').trim().split(/\s+/);
+  if (parts.length <= 1) return n || '?';
+  const last = parts[parts.length - 1];
+  return last.length > 10 ? last.slice(0, 9) + '…' : last;
+}
+
+function posType(p) {
+  const abbr = (p.position?.abbreviation || '').toUpperCase().trim();
+  const name  = (p.position?.name || '').toLowerCase();
+  // Single-letter ESPN codes
+  if (abbr === 'G'  || abbr === 'GK') return 'GK';
+  if (abbr === 'D'  || abbr === 'DF' || /^(CB|LB|RB|LWB|RWB|SW|DC|DEF|WB)$/.test(abbr)) return 'DEF';
+  if (abbr === 'M'  || abbr === 'MF' || /^(CM|DM|CDM|CAM|AM|LM|RM|ATM)$/.test(abbr))   return 'MID';
+  if (abbr === 'F'  || abbr === 'FW' || /^(ST|CF|LW|RW|WF|SS|ATT|FWD)$/.test(abbr))    return 'FWD';
+  // Name fallback
+  if (name.includes('keeper') || name.includes('goalkeeper')) return 'GK';
+  if (name.includes('back')   || name.includes('defender'))   return 'DEF';
+  if (name.includes('midfielder'))                             return 'MID';
+  if (name.includes('forward') || name.includes('striker') || name.includes('winger')) return 'FWD';
+  return 'MID';
+}
+
+// Split starters into rows using formation string e.g. "3-4-2-1"
+// ESPN returns starters in formation order, so this gives correct rows
+function splitByFormation(starters, formation) {
+  const nums  = formation.split('-').map(n => parseInt(n) || 0).filter(n => n > 0);
+  const sizes = [1, ...nums]; // prepend GK row
+  const rows  = [];
+  let i = 0;
+  for (const s of sizes) {
+    const row = starters.slice(i, i + s);
+    if (row.length) rows.push(row);
+    i += s;
+  }
+  if (i < starters.length) rows.push(starters.slice(i)); // overflow
+  return rows;
+}
+
+function groupByPosition(starters) {
+  const buckets = { GK: [], DEF: [], MID: [], FWD: [] };
+  starters.forEach(p => buckets[posType(p)].push(p));
+  return ['GK', 'DEF', 'MID', 'FWD'].filter(k => buckets[k].length).map(k => buckets[k]);
+}
+
 function buildLineup(rosters) {
   if (!rosters || !rosters.length) return emptyHTML('ຍັງບໍ່ມີ Lineup');
   const hasPlayers = rosters.some(r => r.roster?.length);
   if (!hasPlayers) return emptyHTML('ຍັງບໍ່ມີ Lineup');
 
-  const cols = rosters.slice(0, 2).map(r => {
-    const all      = r.roster || [];
-    const starters = all.filter(p => p.starter);
-    const bench    = all.filter(p => !p.starter);
-    const logo     = r.team?.logo || '';
-    const name     = r.team?.displayName || '';
+  const cols = rosters.slice(0, 2).map((r, idx) => {
+    const all       = r.roster || [];
+    const starters  = all.filter(p => p.starter);
+    const bench     = all.filter(p => !p.starter);
+    const logo      = r.team?.logo || '';
+    const name      = r.team?.displayName || '';
+    const formation = r.formation || '';
 
-    const playerRow = (p, isBench) => {
-      const a   = p.athlete || {};
-      const pos = p.position?.abbreviation || '';
-      return `<div class="player-row" style="${isBench ? 'opacity:.65' : ''}">
-        <div class="p-jersey">${p.jersey || '?'}</div>
-        <div class="p-name">${a.displayName || '?'}</div>
-        <div class="p-pos">${pos}</div>
-      </div>`;
-    };
+    // Prefer formation-based split (ESPN returns players in formation order)
+    const rows = (formation && starters.length)
+      ? splitByFormation(starters, formation)
+      : groupByPosition(starters);
+    if (idx === 0) rows.reverse(); // home: FWD→GK top-to-bottom (attack faces center)
 
-    return `<div class="lineup-col">
-      <div class="lineup-team-hdr">
+    const pitchHtml = rows.map(row => `<div class="pitch-player-row">
+      ${row.map(p => `<div class="pitch-player-dot">
+        <div class="pitch-jersey-circle">${p.jersey || '?'}</div>
+        <div class="pitch-player-name">${shortName(p.athlete?.displayName || '?')}</div>
+      </div>`).join('')}
+    </div>`).join('');
+
+    const benchHtml = bench.length
+      ? `<div class="bench-sep-bar"><i class="fas fa-chair me-1"></i>ສຳຮອງ</div>
+         ${bench.map(p => `<div class="player-row" style="opacity:.65">
+           <div class="p-jersey">${p.jersey || '?'}</div>
+           <div class="p-name">${p.athlete?.displayName || '?'}</div>
+           <div class="p-pos">${p.position?.abbreviation || ''}</div>
+         </div>`).join('')}`
+      : '';
+
+    return `<div class="lineup-pitch-col">
+      <div class="lineup-pitch-header">
         ${logo ? `<img src="${logo}" alt="">` : ''}
-        ${name}
+        <span class="lineup-team-nm">${name}</span>
+        ${formation ? `<span class="formation-badge">${formation}</span>` : ''}
       </div>
-      ${starters.map(p => playerRow(p, false)).join('')}
-      ${bench.length ? `<div class="bench-sep"><i class="fas fa-chair me-1"></i>ສຳຮອງ</div>${bench.map(p => playerRow(p, true)).join('')}` : ''}
+      <div class="pitch-field">${pitchHtml}</div>
+      ${benchHtml}
     </div>`;
   }).join('');
 
-  return `<div class="lineup-wrap">${cols}</div>`;
+  return `<div class="lineup-pitches">${cols}</div>`;
 }
 
 // ── Odds ─────────────────────────────────────────────
@@ -734,7 +864,7 @@ async function refreshStats() {
     const today = clampDate(todayStr());
     const prev  = shiftDate(today, -1);
     const data  = await fetchJSON(`${API.espn}/scoreboard?dates=${toYMD(prev)}-${toYMD(today)}&limit=200`);
-    const evs   = (data.events || []).filter(e => e.date.split('T')[0] === today);
+    const evs   = (data.events || []).filter(e => localDateStr(e.date) === today);
     const live  = evs.filter(e => e.competitions[0].status.type.state === 'in').length;
     const done  = evs.filter(e => e.competitions[0].status.type.state === 'post').length;
     const upcoming = evs.filter(e => e.competitions[0].status.type.state === 'pre').length;
