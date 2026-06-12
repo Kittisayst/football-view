@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FIFA World Cup 2026 - ຕາຕະລາງ & ຜົນການແຂ່ງຂັນ</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;700&family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="css/style.css" rel="stylesheet" />
+</head>
+<body>
+
+<!-- ════════════ HERO ════════════ -->
+<header class="hero">
+  <div class="container">
+    <div class="hero-badge">⚽ FIFA Official Tournament</div>
+    <h1 class="hero-title">FIFA WORLD CUP 2026™</h1>
+    <p class="hero-sub">🇺🇸 USA &nbsp;·&nbsp; 🇨🇦 Canada &nbsp;·&nbsp; 🇲🇽 Mexico &nbsp;|&nbsp; 11 ມິ.ຖ. – 19 ກ.ກ. 2026</p>
+    <div class="d-flex justify-content-center gap-2 flex-wrap mt-4">
+      <div class="stat-pill"><span class="num" id="s-total">—</span><span class="lbl">ທັງໝົດ</span></div>
+      <div class="stat-pill live"><span class="num" id="s-live">—</span><span class="lbl">ສດ</span></div>
+      <div class="stat-pill"><span class="num" id="s-done">—</span><span class="lbl">ຈົບ</span></div>
+      <div class="stat-pill"><span class="num" id="s-upcoming">—</span><span class="lbl">ກຳລັງຈະ</span></div>
+    </div>
+  </div>
+</header>
+
+<!-- ════════════ NAV ════════════ -->
+<nav class="main-nav">
+  <div class="container">
+    <div class="d-flex overflow-auto" style="gap:2px;">
+      <button class="tab-btn active" id="tab-today"     onclick="showTab('today')">
+        <span class="pulse-dot"></span>ສດ / ມື້ນີ້
+      </button>
+      <button class="tab-btn"        id="tab-schedule"  onclick="showTab('schedule')">
+        <i class="fas fa-calendar-alt me-1"></i>ຕາຕະລາງ
+      </button>
+      <button class="tab-btn"        id="tab-results"   onclick="showTab('results')">
+        <i class="fas fa-flag-checkered me-1"></i>ຜົນການແຂ່ງຂັນ
+      </button>
+      <button class="tab-btn"        id="tab-standings" onclick="showTab('standings')">
+        <i class="fas fa-table me-1"></i>ຕາຕາລາງຄະແນນ
+      </button>
+    </div>
+  </div>
+</nav>
+
+<!-- ════════════ CONTENT ════════════ -->
+<main class="container py-4">
+
+  <!-- TODAY / LIVE -->
+  <section id="pane-today">
+    <div class="toolbar">
+      <i class="fas fa-calendar-day" style="color:var(--gold)"></i>
+      <label>ວັນທີ:</label>
+      <input type="date" id="pickerToday" onchange="loadDay(this.value)" />
+      <button class="btn-gold" onclick="jumpToday()">
+        <i class="fas fa-crosshairs me-1"></i>ມື້ນີ້
+      </button>
+      <span id="todayCount" style="font-size:.8rem;color:var(--text-muted);margin-left:auto;"></span>
+    </div>
+    <div id="body-today"></div>
+  </section>
+
+  <!-- SCHEDULE -->
+  <section id="pane-schedule" style="display:none">
+    <div class="toolbar">
+      <i class="fas fa-calendar-week" style="color:var(--gold)"></i>
+      <label>ຈາກ:</label>
+      <input type="date" id="sFrom" value="2026-06-11" />
+      <label>ຫາ:</label>
+      <input type="date" id="sTo"   value="2026-07-19" />
+      <button class="btn-gold" onclick="loadSchedule()">
+        <i class="fas fa-search me-1"></i>ຄົ້ນຫາ
+      </button>
+    </div>
+    <div id="body-schedule"></div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="pane-results" style="display:none">
+    <div id="body-results"></div>
+  </section>
+
+  <!-- STANDINGS -->
+  <section id="pane-standings" style="display:none">
+    <div id="body-standings"></div>
+  </section>
+
+</main>
+
+<footer>
+  <p>ຂໍ້ມູນຈາກ ESPN Sports API &nbsp;|&nbsp; FIFA World Cup 2026™ &nbsp;|&nbsp; Auto-refresh ທຸກ 30 ວິນາທີ</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
