@@ -70,6 +70,9 @@
       <button class="tab-btn"        id="tab-news"      onclick="showTab('news')">
         <i class="fas fa-newspaper me-1"></i>ຂ່າວ
       </button>
+      <button class="tab-btn"        id="tab-tv"        onclick="showTab('tv')">
+        <i class="fas fa-tv me-1"></i>ເບິ່ງສດ
+      </button>
     </div>
   </div>
 </nav>
@@ -119,6 +122,35 @@
   <!-- NEWS -->
   <section id="pane-news" style="display:none">
     <div id="body-news"></div>
+  </section>
+
+  <!-- TV LIVE -->
+  <section id="pane-tv" style="display:none">
+    <div class="tv-hero">
+      <div class="tv-hero-glow"></div>
+      <div class="tv-hero-icon">📺</div>
+      <div class="tv-hero-badge"><span class="pulse-dot"></span>ອອກອາກາດສດ</div>
+      <h2 class="tv-hero-title">ລາວທີວີ ສດ</h2>
+      <p class="tv-hero-sub">ເບິ່ງການຖ່າຍທອດສດ FIFA World Cup 2026<br>ຜ່ານ Lao TV Online</p>
+      <a href="https://laotv.la/live.html" target="_blank" rel="noopener" class="tv-watch-btn">
+        <i class="fas fa-play-circle me-2"></i>ເບິ່ງສດດຽວນີ້
+      </a>
+      <p class="tv-hero-hint">
+        <i class="fas fa-external-link-alt me-1"></i>ເປີດໃນ laotv.la
+      </p>
+    </div>
+
+    <div class="tv-ch-title"><i class="fas fa-satellite-dish me-2"></i>ຊ່ອງທີ່ໃຊ້ໄດ້</div>
+    <div class="tv-ch-grid">
+      <a href="https://laotv.la/live.html" target="_blank" rel="noopener" class="tv-ch-card">
+        <div class="tv-ch-dot"></div>
+        <div>
+          <div class="tv-ch-name">Lao TV</div>
+          <div class="tv-ch-url">laotv.la</div>
+        </div>
+        <i class="fas fa-chevron-right ms-auto" style="color:var(--text-muted);font-size:.75rem"></i>
+      </a>
+    </div>
   </section>
 
 </main>

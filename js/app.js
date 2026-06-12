@@ -28,10 +28,17 @@ function clampDate(d) {
   if (d > WC_END)   return WC_END;
   return d;
 }
+const LAO_DAYS   = ['ອາທິດ','ຈັນ','ອັງຄານ','ພຸດ','ພະຫັດ','ສຸກ','ເສົາ'];
+const LAO_MONTHS = ['','ມັງກອນ','ກຸມພາ','ມີນາ','ເມສາ','ພຶດສະພາ','ມິຖຸນາ','ກໍລະກົດ','ສິງຫາ','ກັນຍາ','ຕຸລາ','ພະຈິກ','ທັນວາ'];
+
 function fmtDate(iso) {
-  return new Date(iso).toLocaleDateString('lo-LA', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
+  const d   = new Date(iso);
+  const day = LAO_DAYS[d.getDay()];
+  const dd  = d.getDate();
+  const m   = d.getMonth() + 1;
+  const mon = LAO_MONTHS[m];
+  const y   = d.getFullYear();
+  return `${day}, ${dd} ${mon}(${m}) ${y}`;
 }
 function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString('lo-LA', { hour: '2-digit', minute: '2-digit' });
@@ -80,7 +87,13 @@ function getStatusInfo(comp) {
   const clk = comp.status.displayClock || '';
   const per = comp.status.period || 0;
   if (s.state === 'in') {
-    let txt = s.name === 'STATUS_HALFTIME' ? 'ພັກ' : per === 1 ? `ຄ.1 ${clk}` : per === 2 ? `ຄ.2 ${clk}` : s.shortDetail || 'LIVE';
+    const min = clk.replace("'", '');
+    let txt;
+    if (s.name === 'STATUS_HALFTIME')        txt = 'ພັກຄlr';
+    else if (per === 1 && min)               txt = `ຄlr.1 · ${min}'`;
+    else if (per === 2 && min)               txt = `ຄlr.2 · ${min}'`;
+    else if (per === 3 && min)               txt = `ຕໍ່ເວລາ · ${min}'`;
+    else                                     txt = s.shortDetail || 'LIVE';
     return { cls: 'status-live', text: txt, state: 'live' };
   }
   if (s.state === 'post') return { cls: 'status-final', text: s.shortDetail || 'FT', state: 'post' };
@@ -154,7 +167,6 @@ function renderCard(ev, odds = null) {
       <div class="col-4">${teamBlock(away, away.winner)}</div>
     </div>
     ${oddsEl}
-    <div class="card-click-hint"><i class="fas fa-info-circle me-1"></i>ກົດເພື່ອລາຍລະອຽດ</div>
   </div>`;
 }
 
@@ -671,7 +683,7 @@ async function refreshStats() {
 //  TAB SWITCHING
 // ══════════════════════════════════════════════════════
 function showTab(tab) {
-  ['today', 'schedule', 'results', 'standings', 'news'].forEach(t => {
+  ['today', 'schedule', 'results', 'standings', 'news', 'tv'].forEach(t => {
     document.getElementById(`pane-${t}`).style.display = t === tab ? '' : 'none';
     document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
   });
