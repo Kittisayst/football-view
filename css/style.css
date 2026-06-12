@@ -201,6 +201,63 @@ body {
 .status-final    { background: rgba(34,197,94,.18); color: var(--green); border: 1px solid rgba(34,197,94,.4); }
 .status-upcoming { background: rgba(240,180,41,.15); color: var(--gold); border: 1px solid rgba(240,180,41,.4); }
 
+/* Live score glow */
+.score-live {
+  animation: score-glow 2.5s ease-in-out infinite;
+}
+@keyframes score-glow {
+  0%, 100% { text-shadow: none; }
+  50%       { text-shadow: 0 0 24px rgba(239,68,68,.5), 0 0 8px rgba(239,68,68,.3); }
+}
+
+/* Match progress bar */
+.match-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 6px auto 2px;
+  width: 90px;
+}
+.mp-label-left,
+.mp-label-right {
+  font-size: .58rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  line-height: 1;
+}
+.match-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.match-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), #f97316);
+  border-radius: 2px;
+  transition: width .8s ease;
+  position: relative;
+}
+.match-progress-fill::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 6px;
+  background: #fff;
+  border-radius: 50%;
+  opacity: .9;
+  box-shadow: 0 0 6px #fff;
+  animation: ball-blink 1s ease-in-out infinite;
+}
+@keyframes ball-blink {
+  0%, 100% { opacity: .9; }
+  50%       { opacity: .3; }
+}
+.match-progress-fill.extra-time {
+  background: linear-gradient(90deg, var(--gold), var(--red));
+}
+
 .pulse-dot {
   display: inline-block; width: 7px; height: 7px;
   background: var(--red); border-radius: 50%;

@@ -87,14 +87,14 @@ function getStatusInfo(comp) {
   const clk = comp.status.displayClock || '';
   const per = comp.status.period || 0;
   if (s.state === 'in') {
-    const min = clk.replace("'", '');
+    const min = clk.replace(/'/g, '');   // strip all apostrophes first
     let txt;
-    if (s.name === 'STATUS_HALFTIME')        txt = 'ພັກຄlr';
-    else if (per === 1 && min)               txt = `ຄlr.1 · ${min}'`;
-    else if (per === 2 && min)               txt = `ຄlr.2 · ${min}'`;
-    else if (per === 3 && min)               txt = `ຕໍ່ເວລາ · ${min}'`;
-    else                                     txt = s.shortDetail || 'LIVE';
-    return { cls: 'status-live', text: txt, state: 'live' };
+    if (s.name === 'STATUS_HALFTIME')    txt = 'ພັກຄlr';
+    else if (per === 1 && min)           txt = `ຄlr.1 · ${min}'`;
+    else if (per === 2 && min)           txt = `ຄlr.2 · ${min}'`;
+    else if (per === 3 && min)           txt = `ຕໍ່ເວລາ · ${min}'`;
+    else                                 txt = s.shortDetail || 'LIVE';
+    return { cls: 'status-live', text: txt, state: 'live', period: per, rawClock: min };
   }
   if (s.state === 'post') return { cls: 'status-final', text: s.shortDetail || 'FT', state: 'post' };
   return { cls: 'status-upcoming', text: fmtTime(comp.startDate || ''), state: 'pre' };
@@ -111,6 +111,32 @@ function teamBlock(t, isWinner) {
     ${logoEl}
     <div class="team-name ${isWinner ? 'text-warning' : ''}">${name}</div>
     <div class="team-abbr">${abbr}</div>
+  </div>`;
+}
+
+function buildProgressBar(period, rawClock) {
+  let min = 0;
+  if (rawClock && rawClock.includes('+')) {
+    const [base, extra] = rawClock.split('+').map(n => parseInt(n) || 0);
+    min = base + extra;
+  } else {
+    min = parseInt(rawClock) || 0;
+  }
+
+  let pct = 0;
+  if (period === 1)      pct = Math.min((min / 45) * 100, 100);
+  else if (period === 2) pct = Math.min(((45 + Math.min(min, 45)) / 90) * 100, 100);
+  else                   pct = 100;
+
+  const isExtraTime = period === 2 && min > 45;
+  const label = isExtraTime ? `+${min - 45}'` : `${min}'`;
+
+  return `<div class="match-progress-wrap">
+    <span class="mp-label-left">${period === 1 ? '0\'' : '45\''}</span>
+    <div class="match-progress-bar">
+      <div class="match-progress-fill ${isExtraTime ? 'extra-time' : ''}" style="width:${pct}%"></div>
+    </div>
+    <span class="mp-label-right">${period === 1 ? '45\'' : '90\''}</span>
   </div>`;
 }
 
@@ -138,12 +164,14 @@ function renderCard(ev, odds = null) {
   const showScore = isLive || si.state === 'post';
 
   const scoreEl = showScore
-    ? `<div class="score-digits">
+    ? `<div class="score-digits ${isLive ? 'score-live' : ''}">
         <span>${home.score ?? 0}</span>
         <span class="score-sep">:</span>
         <span>${away.score ?? 0}</span>
        </div>`
     : `<div class="kickoff-time">${fmtTime(ev.date)}</div>`;
+
+  const progressEl = isLive ? buildProgressBar(si.period, si.rawClock) : '';
 
   const badgeEl = isLive
     ? `<span class="badge-status status-live"><span class="pulse-dot"></span>${si.text}</span>`
@@ -160,6 +188,7 @@ function renderCard(ev, odds = null) {
       <div class="col-4">${teamBlock(home, home.winner)}</div>
       <div class="col-4 score-col">
         ${scoreEl}
+        ${progressEl}
         ${badgeEl}
         ${groupEl}
         ${venueEl}
@@ -198,13 +227,31 @@ async function loadDay(date) {
   const el = document.getElementById('body-today');
   el.innerHTML = spinnerHTML();
   try {
-    const data = await fetchJSON(`${API.espn}/scoreboard?dates=${toYMD(date)}&limit=100`);
-    const evs  = data.events || [];
+    // Always fetch yesterday + today so live matches that started the day before
+    // (timezone difference) are not missed
+    const prev = prevDateStr(date);
+    const [dataToday, dataPrev] = await Promise.all([
+      fetchJSON(`${API.espn}/scoreboard?dates=${toYMD(date)}&limit=100`),
+      fetchJSON(`${API.espn}/scoreboard?dates=${toYMD(prev)}&limit=100`).catch(() => ({ events: [] })),
+    ]);
+
+    // From yesterday: only keep matches that are still live
+    const liveFromPrev = (dataPrev.events || []).filter(
+      e => e.competitions[0].status.type.state === 'in'
+    );
+    const evs = [...liveFromPrev, ...(dataToday.events || [])];
+
     document.getElementById('todayCount').textContent = evs.length ? `${evs.length} ການແຂ່ງຂັນ` : '';
     el.innerHTML = renderEventList(evs);
   } catch (e) {
     el.innerHTML = errorHTML('ດຶງຂໍ້ມູນບໍ່ໄດ້: ' + e.message);
   }
+}
+
+function prevDateStr(dateStr) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
 }
 
 function jumpToday() {
